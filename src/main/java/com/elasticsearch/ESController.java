@@ -1,6 +1,7 @@
 package com.elasticsearch;
 
 import com.alibaba.fastjson.JSONObject;
+import com.elasticsearch.model.Product;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.utils.DateUtils;
 import org.elasticsearch.common.xcontent.XContentBuilder;
@@ -27,12 +28,12 @@ public class ESController {
     /**
      * 测试索引
      */
-    private String indexName="test_index";
+    private String indexName="zz";
 
     /**
      * 类型
      */
-    private String esType="external";
+    private String esType="product";
 
     /**
      * http://127.0.0.1:8080/es/createIndex
@@ -59,12 +60,13 @@ public class ESController {
      */
     @RequestMapping("/insertJson")
     @ResponseBody
-    public String insertJson() {
+    public String insertJson(Product product) {
         JSONObject jsonObject = new JSONObject();
-        jsonObject.put("id", System.currentTimeMillis());
-        jsonObject.put("age", 25);
-        jsonObject.put("name", "j-" + new Random(100).nextInt());
-        jsonObject.put("date", new Date());
+        jsonObject.put("id",product.getId());
+        jsonObject.put("productName", product.getProductName());
+        jsonObject.put("productType", product.getProductType());
+        jsonObject.put("startTime",product.getStartTime());
+        jsonObject.put("peopleNum", product.getPeopleNum());
         String id = ElasticsearchUtils.addData(jsonObject, indexName, esType, jsonObject.getString("id"));
         return id;
     }
@@ -108,15 +110,24 @@ public class ESController {
      */
     @RequestMapping("/update")
     @ResponseBody
-    public String update(String id) {
-        if(StringUtils.isNotBlank(id)) {
+    public String update(Product product) {
+        if(product.getId()!=0) {
             JSONObject jsonObject = new JSONObject();
-            jsonObject.put("id", id);
-            jsonObject.put("age", 31);
-            jsonObject.put("name", "修改");
-            jsonObject.put("date", new Date());
-            ElasticsearchUtils.updateDataById(jsonObject, indexName, esType, id);
-            return "id=" + id;
+            jsonObject.put("id", product.getId());
+            if(StringUtils.isNotEmpty(product.getProductName())){
+                jsonObject.put("productName", product.getProductName());
+            }
+            if(product.getProductType()!=null){
+                jsonObject.put("productType", product.getProductType());
+            }
+            if (StringUtils.isNotEmpty(product.getStartTime())) {
+                jsonObject.put("startTime", product.getStartTime());
+            }
+            if(product.getPeopleNum()!=0){
+                jsonObject.put("peopleNum", product.getPeopleNum());
+            }
+            ElasticsearchUtils.updateDataById(jsonObject, indexName, esType, product.getId()+"");
+            return "id=" + product.getId();
         }
         else{
             return "id为空";
@@ -148,15 +159,20 @@ public class ESController {
      */
     @RequestMapping("/queryMatchData")
     @ResponseBody
-    public String queryMatchData() {
-        BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
-        boolean matchPhrase = false;
-        if (matchPhrase == Boolean.TRUE) {
-            boolQuery.must(QueryBuilders.matchPhraseQuery("name", "修"));
+    public String queryMatchData(String name,Boolean isPhrase) {
+//        BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
+//        if (isPhrase) {
+//            boolQuery.must(QueryBuilders.matchPhraseQuery("productName", name));
+//        } else {
+//            boolQuery.must(QueryBuilders.matchQuery("productName", name));
+//        }
+        QueryBuilder boolQuery=null;
+        if (isPhrase) {
+            boolQuery=QueryBuilders.matchPhraseQuery("productName", name);
         } else {
-            boolQuery.must(QueryBuilders.matchQuery("name", "修"));
+            boolQuery=QueryBuilders.matchQuery("productName", name);
         }
-        List<Map<String, Object>> list = ElasticsearchUtils.searchListData(indexName, esType, boolQuery, 10, null, null, null);
+        List<Map<String, Object>> list = ElasticsearchUtils.searchListData(indexName, esType, boolQuery, 10, null, null, "productName");
         return JSONObject.toJSONString(list);
     }
 
@@ -167,8 +183,8 @@ public class ESController {
      */
     @RequestMapping("/queryWildcardData")
     @ResponseBody
-    public String queryWildcardData() {
-        QueryBuilder queryBuilder = QueryBuilders.wildcardQuery("name.keyword", "j-*466");
+    public String queryWildcardData(String name) {
+        QueryBuilder queryBuilder = QueryBuilders.wildcardQuery("productName.keyword", name);
         List<Map<String, Object>> list = ElasticsearchUtils.searchListData(indexName, esType, queryBuilder, 10, null, null, null);
         return JSONObject.toJSONString(list);
     }
@@ -191,10 +207,10 @@ public class ESController {
      */
     @RequestMapping("/queryIntRangeData")
     @ResponseBody
-    public String queryIntRangeData() {
+    public String queryIntRangeData(int maxPeople,int minPeople) {
         BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
-        boolQuery.must(QueryBuilders.rangeQuery("age").from(21)
-                .to(25));
+        boolQuery.must(QueryBuilders.rangeQuery("peopleNum").from(maxPeople)
+                .to(minPeople));
         List<Map<String, Object>> list = ElasticsearchUtils.searchListData(indexName, esType, boolQuery, 10, null, null, null);
         return JSONObject.toJSONString(list);
     }
@@ -205,10 +221,10 @@ public class ESController {
      */
     @RequestMapping("/queryDateRangeData")
     @ResponseBody
-    public String queryDateRangeData() {
+    public String queryDateRangeData(String startTime,String endTime) {
         BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
-        boolQuery.must(QueryBuilders.rangeQuery("date").from("2018-04-25T08:33:44.840Z")
-                .to("2019-04-25T10:03:08.081Z"));
+        boolQuery.must(QueryBuilders.rangeQuery("startTime").from(startTime)
+                .to(endTime));
         List<Map<String, Object>> list = ElasticsearchUtils.searchListData(indexName, esType, boolQuery, 10, null, null, null);
         return JSONObject.toJSONString(list);
     }
@@ -224,12 +240,13 @@ public class ESController {
      */
     @RequestMapping("/queryPage")
     @ResponseBody
-    public String queryPage(String startPage,String pageSize){
+    public String queryPage(String name,int peopleNum,String startPage,String pageSize,String sort,String fields,String highlightField){
         if(StringUtils.isNotBlank(startPage)&& StringUtils.isNotBlank(pageSize)) {
             BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
-            boolQuery.must(QueryBuilders.rangeQuery("date").from("2018-04-25T08:33:44.840Z")
-                    .to("2018-04-25T10:03:08.081Z"));
-            EsPage list = ElasticsearchUtils.searchDataPage(indexName, esType, Integer.parseInt(startPage), Integer.parseInt(pageSize), boolQuery, null, null, null);
+            boolQuery.must(QueryBuilders.matchQuery("productName", name));
+            boolQuery.should(QueryBuilders.matchQuery("peopleNum",peopleNum));
+            boolQuery.should(QueryBuilders.matchQuery("peopleNum",4));
+            EsPage list = ElasticsearchUtils.searchDataPage(indexName, esType, Integer.parseInt(startPage), Integer.parseInt(pageSize), boolQuery, fields, sort, highlightField);
             return JSONObject.toJSONString(list);
         }
         else{

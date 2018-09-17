@@ -18,6 +18,7 @@ import org.elasticsearch.common.text.Text;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
+import org.elasticsearch.search.fetch.subphase.highlight.SearchContextHighlight;
 import org.elasticsearch.search.sort.SortOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -202,13 +203,14 @@ public class ElasticsearchUtils {
 
         // 高亮（xxx=111,aaa=222）
         if (StringUtils.isNotEmpty(highlightField)) {
-            HighlightBuilder highlightBuilder = new HighlightBuilder();
-
             //highlightBuilder.preTags("<span style='color:red' >");//设置前缀
             //highlightBuilder.postTags("</span>");//设置后缀
-
+            String[] highlightFields=highlightField.split(",");
+            HighlightBuilder highlightBuilder = new HighlightBuilder();
             // 设置高亮字段
-            highlightBuilder.field(highlightField);
+            for (String field : highlightFields) {
+                highlightBuilder.field(field);
+            }
             searchRequestBuilder.highlighter(highlightBuilder);
         }
 
@@ -219,7 +221,9 @@ public class ElasticsearchUtils {
         searchRequestBuilder.setFrom(startPage).setSize(pageSize);
 
         // 设置是否按查询匹配度排序
-        searchRequestBuilder.setExplain(true);
+        if(StringUtils.isEmpty(sortField)){
+            searchRequestBuilder.setExplain(true);
+        }
 
         //打印的内容 可以在 Elasticsearch head 和 Kibana  上执行查询
         LOGGER.info("\n{}", searchRequestBuilder);
@@ -231,7 +235,7 @@ public class ElasticsearchUtils {
         long length = searchResponse.getHits().getHits().length;
 
         LOGGER.debug("共查询到[{}]条数据,处理数据条数[{}]", totalHits, length);
-
+        LOGGER.info("\n{}", searchResponse);
         if (searchResponse.status().getStatus() == 200) {
             // 解析对象
             List<Map<String, Object>> sourceList = setSearchResponse(searchResponse, highlightField);
@@ -263,9 +267,12 @@ public class ElasticsearchUtils {
         }
 
         if (StringUtils.isNotEmpty(highlightField)) {
+            String[] highlightFields=highlightField.split(",");
             HighlightBuilder highlightBuilder = new HighlightBuilder();
             // 设置高亮字段
-            highlightBuilder.field(highlightField);
+            for (String field : highlightFields) {
+                highlightBuilder.field(field);
+            }
             searchRequestBuilder.highlighter(highlightBuilder);
         }
 
@@ -320,10 +327,14 @@ public class ElasticsearchUtils {
             if (StringUtils.isNotEmpty(highlightField)) {
 
                 System.out.println("遍历 高亮结果集，覆盖 正常结果集" + searchHit.getSourceAsMap());
-                Text[] text = searchHit.getHighlightFields().get(highlightField).getFragments();
-
+                Text[] text=null;
+                if(searchHit.getHighlightFields().get(highlightField)!=null){
+                    text = searchHit.getHighlightFields().get(highlightField).getFragments();
+                }
                 if (text != null) {
+                    stringBuffer = new StringBuffer();
                     for (Text str : text) {
+
                         stringBuffer.append(str.string());
                     }
                     //遍历 高亮结果集，覆盖 正常结果集
